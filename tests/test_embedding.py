@@ -136,3 +136,63 @@ def test_embedding_config_provider_defaults():
     assert explicit.base_url == "https://proxy/v1"
     assert explicit.api_key == "real"
     assert explicit.embed_model == "custom"
+
+
+def test_local_embedding_config_accepts_aliases_and_selects_local_backend():
+    cfg = EmbeddingConfig(provider="local", model="/models/bge-base-zh-v1.5", batch_size=32)
+    assert cfg.embed_model == "/models/bge-base-zh-v1.5"
+    assert cfg.embed_batch_size == 32
+    assert cfg.client_backend == "local"
+
+
+async def test_local_embedding_client_loads_sentence_transformer_and_normalizes(monkeypatch):
+    captured = {"calls": 0}
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_path):
+            captured["model_path"] = model_path
+
+        def encode(self, texts, batch_size, normalize_embeddings):
+            captured["calls"] += 1
+            captured["texts"] = texts
+            captured["batch_size"] = batch_size
+            captured["normalize_embeddings"] = normalize_embeddings
+            return [[1.0, 0.0], [0.0, 1.0]]
+
+    class _FakeModule:
+        SentenceTransformer = _FakeSentenceTransformer
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _FakeModule())
+
+    from memu.embedding.local import LocalEmbeddingClient
+
+    client = LocalEmbeddingClient(embed_model="/models/bge", batch_size=2)
+    vectors, raw = await client.embed(["alpha", "beta"])
+
+    assert vectors == [[1.0, 0.0], [0.0, 1.0]]
+    assert raw is None
+    assert captured == {
+        "calls": 1,
+        "model_path": "/models/bge",
+        "texts": ["alpha", "beta"],
+        "batch_size": 2,
+        "normalize_embeddings": True,
+    }
+
+
+def test_gateway_builds_local_client(monkeypatch):
+    class _FakeSentenceTransformer:
+        def __init__(self, model_path):
+            self.model_path = model_path
+
+    class _FakeModule:
+        SentenceTransformer = _FakeSentenceTransformer
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _FakeModule())
+
+    from memu.embedding.local import LocalEmbeddingClient
+
+    client = build_embedding_client(EmbeddingConfig(provider="local", model="/models/bge", batch_size=16))
+    assert isinstance(client, LocalEmbeddingClient)
+    assert client.embed_model == "/models/bge"
+    assert client.batch_size == 16

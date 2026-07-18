@@ -37,10 +37,20 @@ def _build_httpx_client(cfg: EmbeddingConfig) -> Any:
     )
 
 
+def _build_local_client(cfg: EmbeddingConfig) -> Any:
+    from memu.embedding.local import LocalEmbeddingClient
+
+    return LocalEmbeddingClient(
+        embed_model=cfg.embed_model,
+        batch_size=cfg.embed_batch_size,
+    )
+
+
 # Registry mapping ``client_backend`` identifiers to embedding client builders.
 EMBEDDING_CLIENT_BUILDERS: dict[str, Callable[[EmbeddingConfig], Any]] = {
     "sdk": _build_sdk_client,
     "httpx": _build_httpx_client,
+    "local": _build_local_client,
 }
 
 

@@ -18,6 +18,7 @@ from memu.embedding.defaults import (
 )
 from memu.embedding.gateway import build_embedding_client
 from memu.embedding.http_client import HTTPEmbeddingClient
+from memu.embedding.local import LocalEmbeddingClient
 from memu.embedding.openai_sdk import OpenAIEmbeddingSDKClient
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "EMBEDDING_PROVIDER_ENDPOINTS",
     "EmbeddingClient",
     "HTTPEmbeddingClient",
+    "LocalEmbeddingClient",
     "OpenAIEmbeddingSDKClient",
     "build_embedding_client",
     "default_embedding_model",

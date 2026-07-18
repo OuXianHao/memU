@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, Field, RootModel, StringConstraints, model_validator
+from pydantic import AliasChoices, BaseModel, BeforeValidator, Field, RootModel, StringConstraints, model_validator
 
 
 def normalize_value(v: str) -> str:
@@ -28,18 +28,20 @@ class EmbeddingConfig(BaseModel):
     api_key: str = Field(default="OPENAI_API_KEY")
     embed_model: str = Field(
         default="text-embedding-3-small",
-        description="Embedding model used for vectorization.",
+        validation_alias=AliasChoices("embed_model", "model"),
+        description="Embedding model used for vectorization. For provider=local, this is a local model name or path.",
     )
     embed_batch_size: int = Field(
         default=1,
-        description="Maximum batch size for embedding API calls (used by the SDK client backend).",
+        validation_alias=AliasChoices("embed_batch_size", "batch_size"),
+        description="Maximum batch size for embedding calls (SDK and local SentenceTransformer backends).",
     )
     client_backend: str = Field(
         default="sdk",
         description=(
             "Which embedding client backend to use: 'sdk' (official OpenAI SDK) or "
             "'httpx' (raw HTTP, supports all providers in memu.embedding.backends, "
-            "e.g. openai/jina/voyage/doubao/openrouter)."
+            "e.g. openai/jina/voyage/doubao/openrouter), or 'local' (SentenceTransformer)."
         ),
     )
     endpoint_overrides: dict[str, str] = Field(
@@ -60,6 +62,8 @@ class EmbeddingConfig(BaseModel):
                 self.base_url = base_url
             if self.api_key == "OPENAI_API_KEY":
                 self.api_key = api_key
+        if self.provider == "local" and self.client_backend == "sdk":
+            self.client_backend = "local"
         if self.embed_model == "text-embedding-3-small":
             resolved = default_embedding_model(self.provider)
             if resolved is not None:

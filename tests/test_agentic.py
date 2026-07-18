@@ -119,3 +119,34 @@ async def test_where_scope_filters_and_rejects_unknown_fields(service: MemorySer
 async def test_progressive_retrieve_rejects_empty_query(service: MemoryService) -> None:
     with pytest.raises(ValueError, match="empty_query"):
         await service.progressive_retrieve("   ")
+
+
+async def test_local_embedding_profile_can_commit_and_retrieve(monkeypatch):
+    import sys
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_path):
+            self.model_path = model_path
+
+        def encode(self, texts, batch_size, normalize_embeddings):
+            vectors = []
+            for text in texts:
+                lowered = text.lower()
+                vectors.append([1.0 if "locomo" in lowered else 0.0, 1.0 if "coffee" in lowered else 0.0])
+            return vectors
+
+    class _FakeModule:
+        SentenceTransformer = _FakeSentenceTransformer
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _FakeModule())
+
+    service = MemoryService(
+        database_config={"metadata_store": {"provider": "inmemory"}},
+        embedding_profiles={"embedding": {"provider": "local", "model": "/models/bge", "batch_size": 32}},
+    )
+    await service.commit_results(
+        recall_files=[{"name": "Experiment", "track": "memory", "description": "LoCoMo", "content": "LoCoMo setup"}]
+    )
+
+    result = await service.progressive_retrieve("LoCoMo benchmark")
+    assert result["segments"][0]["text"] == "LoCoMo setup"
