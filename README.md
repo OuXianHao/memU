@@ -142,7 +142,7 @@ Values resolve in order: process env → `~/.memu/config.env` → default. Every
 | Setting | Env var | Default |
 |---|---|---|
 | Store | `MEMU_DB` | `./data/memu.sqlite3` (CLI); **required** for host adapters |
-| Embedding provider | `MEMU_EMBED_PROVIDER` | `openai` (also: `jina`, `voyage`, `doubao`, `openrouter`); legacy `MEMU_LLM_PROVIDER` still read |
+| Embedding provider | `MEMU_EMBED_PROVIDER` | `openai` (also: `jina`, `voyage`, `doubao`, `openrouter`, `local`); legacy `MEMU_LLM_PROVIDER` still read |
 | API key | `MEMU_API_KEY` | the provider's env var, e.g. `OPENAI_API_KEY` |
 | Embedding model | `MEMU_EMBED_MODEL` | the provider's default |
 | Base URL | `MEMU_BASE_URL` | the provider's default |
@@ -162,6 +162,51 @@ service = MemoryService(
 )
 ```
 
+### Using local embedding models
+
+Local embeddings are useful for reproducible long-term-memory experiments because indexing and retrieval do not depend on a remote provider, mutable hosted model, network availability, or API-side batching behavior. Configure `provider="local"` with a HuggingFace/SentenceTransformer model name or local path; memU loads the model locally and requests normalized embeddings.
+
+```python
+service = MemoryService(
+    database_config={"metadata_store": {"provider": "sqlite", "dsn": "sqlite:///memu.sqlite3"}},
+    embedding_profiles={
+        "embedding": {
+            "provider": "local",
+            "model": "/path/to/bge-base-zh-v1.5",
+            "batch_size": 32,
+        }
+    },
+)
+```
+
+The local backend uses `sentence-transformers` and makes no external embedding API calls. Install the package in editable mode for local experiments:
+
+```bash
+pip install -e .
+```
+
+### Using memU with external LLMs
+
+memU remains responsible only for memory storage and retrieval: `commit_results` embeds memory, and `progressive_retrieve` returns ranked context. Keep answer generation in your experiment harness or application, then pass retrieved memory context to an external LLM such as Qwen3-30B-A3B-Instruct-2507 through an OpenAI-compatible endpoint.
+
+Example experiment configuration:
+
+```python
+embedding = {
+    "provider": "local",
+    "model": "/path/to/bge-base-zh-v1.5",
+    "batch_size": 32,
+}
+
+llm = {
+    "provider": "openai-compatible",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "Qwen3-30B-A3B-Instruct-2507",
+}
+```
+
+See [`examples/qwen3_memu_demo.py`](examples/qwen3_memu_demo.py) for a complete script that retrieves memory with memU, builds a prompt containing the user query and memory context, and calls Qwen through the OpenAI-compatible API without hard-coding API keys.
+
 ### Multi-tenancy
 
 Every record carries optional scope fields (`user_id`, `agent_id` by default). Pass `user=` on writes and `where=` on reads to partition one store:
@@ -176,9 +221,11 @@ Need different scope fields? Supply your own model — filters are validated aga
 ```python
 from pydantic import BaseModel
 
+
 class TeamScope(BaseModel):
     team_id: str | None = None
     user_id: str | None = None
+
 
 service = MemoryService(user_config={"model": TeamScope})
 ```
